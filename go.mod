@@ -1,4 +1,4 @@
-module main.go
+module prometheus-steam-web-api-exporter
 
 go 1.20
 
