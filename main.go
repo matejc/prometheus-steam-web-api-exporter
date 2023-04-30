@@ -39,10 +39,13 @@ func main() {
 	}
 
 	playtimeCollector := collectors.NewPlaytimeCollector(*steamAPIKey, *steamIDs)
+	priceCollector := collectors.NewPriceCollector(*steamAPIKey, *steamIDs)
 
 	// Create a new Prometheus registry and register the collector
 	registry := prometheus.NewRegistry()
 	registry.MustRegister(playtimeCollector)
+	registry.MustRegister(priceCollector)
+
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
