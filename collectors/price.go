@@ -12,9 +12,13 @@ import (
 )
 
 var (
-    gamePrices = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-        Name: "steam_game_price",
-        Help: "Price of a game on Steam.",
+    gamePricesInitial = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+        Name: "steam_game_price_initial",
+        Help: "Initial price of a game on Steam.",
+    }, []string{"steam_profile_name", "steam_id", "name", "app_id"})
+	gamePricesFinal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+        Name: "steam_game_price_final",
+        Help: "Final price of a game on Steam.",
     }, []string{"steam_profile_name", "steam_id", "name", "app_id"})
 )
 
@@ -25,12 +29,14 @@ type PriceCollector struct {
 }
 
 type cachedPrice struct {
-    price      float64
-    timestamp  time.Time
+    priceInitial float64
+	priceFinal   float64
+    timestamp    time.Time
 }
 
 func (c *PriceCollector) Describe(ch chan<- *prometheus.Desc) {
-    gamePrices.Describe(ch)
+    gamePricesInitial.Describe(ch)
+	gamePricesFinal.Describe(ch)
 }
 
 func NewPriceCollector(steamAPIKey, steamIDs string) *PriceCollector {
@@ -79,29 +85,43 @@ func (c *PriceCollector) Collect(metrics chan<- prometheus.Metric) {
 
 			// If the price is in the cache and less than a day old, use the cached value
 			if found && time.Since(existingPrice.timestamp) < 24*time.Hour {
-				gamePrices.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(existingPrice.price)
+				gamePricesInitial.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(existingPrice.priceInitial)
 				continue
+			}
+
+			gameDetails, err := client.GetAppDetails(uint(game.AppID), "ProductCCEU", "LanguageEnglish", []string{"price_overview"})
+			if err != nil {
+				fmt.Printf("WARN: Error retrieving app details for app ID %d: %s\n", game.AppID, err)
+				c.Cache[cacheKey] = cachedPrice{priceInitial: 0, priceFinal: 0, timestamp: time.Now()}
+				gamePricesInitial.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(0)
+				gamePricesFinal.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(0)
+				continue
+			}
+
+			if gameDetails.Data != nil && gameDetails.Data.PriceOverview != nil && gameDetails.Data.PriceOverview.Initial > 0 {
+				priceInitial := float64(gameDetails.Data.PriceOverview.Initial)
+
+				gamePricesInitial.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(priceInitial)
+				c.Cache[cacheKey] = cachedPrice{priceInitial: priceInitial, timestamp: time.Now()}
 			} else {
-				gameDetails, err := client.GetAppDetails(uint(game.AppID), "ProductCCEU", "LanguageEnglish", []string{"price_overview"})
-				if err != nil {
-					fmt.Printf("Error retrieving app details for app ID %d: %s\n", game.AppID, err)
-					c.Cache[cacheKey] = cachedPrice{price: 0, timestamp: time.Now()}
-					continue
-				}
+				fmt.Printf("INFO: Couldn't find initial price information in the response or values is 0. Setting the initial price for app ID %d to zero.\n", game.AppID)
+				c.Cache[cacheKey] = cachedPrice{priceInitial: 0, timestamp: time.Now()}
+				gamePricesInitial.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(0)
+			}
+			if gameDetails.Data != nil && gameDetails.Data.PriceOverview != nil && gameDetails.Data.PriceOverview.Final > 0 {
+				priceFinal := float64(gameDetails.Data.PriceOverview.Final)
 
-				if gameDetails.Data != nil && gameDetails.Data.PriceOverview != nil && gameDetails.Data.PriceOverview.Initial > 0 {
-					price := float64(gameDetails.Data.PriceOverview.Initial)
-
-					gamePrices.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(price)
-					c.Cache[cacheKey] = cachedPrice{price: price, timestamp: time.Now()}
-				} else {
-                    fmt.Printf("Couldn't find pricing information in the response. Setting the price for app ID %d to zero.\n", game.AppID, err)
-					c.Cache[cacheKey] = cachedPrice{price: 0, timestamp: time.Now()}
-				}
+				gamePricesFinal.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(priceFinal)
+				c.Cache[cacheKey] = cachedPrice{priceFinal: priceFinal, timestamp: time.Now()}
+			} else {
+				fmt.Printf("INFO: Couldn't find final price information in the response or values is 0. Setting the final price for app ID %d to zero.\n", game.AppID)
+				c.Cache[cacheKey] = cachedPrice{priceFinal: 0, timestamp: time.Now()}
+				gamePricesFinal.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(0)
 			}
 		}
-		gamePrices.Collect(metrics)
 	}
+	gamePricesInitial.Collect(metrics)
+	gamePricesFinal.Collect(metrics)
 }
 
 func RegisterPriceCollector() {
