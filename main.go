@@ -46,6 +46,10 @@ func main() {
 	registry.MustRegister(playtimeCollector)
 	registry.MustRegister(priceCollector)
 
+	// Register the process and Go metrics.
+	registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	registry.MustRegister(prometheus.NewGoCollector())
+
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
