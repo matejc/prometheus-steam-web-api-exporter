@@ -11,6 +11,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	prometheus_collectors "github.com/prometheus/client_golang/prometheus/collectors"
 )
 
 func stringInSlice(a string, list []string) bool {
@@ -26,7 +27,9 @@ func main() {
 	var (
 		steamAPIKey     = flag.String("steam-api-key", "", "API key to use for requests to the Steam Web API.")
 		steamIDs        = flag.String("steam-ids", "", "Comma-separated list of SteamIDs whose playtime should be scraped.")
-		steamCollectors = flag.String("collectors", "playtime,price", "Comma-separated list of Steam collectors.")
+		steamCollectors = flag.String("collectors", "playtime,price,process,go", "Comma-separated list of Steam collectors.")
+		address	        = flag.String("address", "127.0.0.1", "Listening address.")
+		port            = flag.Uint("port", 6630, "Listening port.")
 		steamCollectorsSlice []string
 	)
 	flag.Parse()
@@ -78,14 +81,18 @@ func main() {
 		achievementsCollector := collectors.NewAchievementsCollector(steamData)
 		registry.MustRegister(achievementsCollector)
 	}
-
-	// Register the process and Go metrics.
-	// registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-	// registry.MustRegister(prometheus.NewGoCollector())
+	if stringInSlice("process", steamCollectorsSlice) {
+		fmt.Println("Registering process collector ...")
+		registry.MustRegister(prometheus_collectors.NewProcessCollector(prometheus_collectors.ProcessCollectorOpts{}))
+	}
+	if stringInSlice("go", steamCollectorsSlice) {
+		fmt.Println("Registering go collector ...")
+		registry.MustRegister(prometheus_collectors.NewGoCollector())
+	}
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 
-	err := http.ListenAndServe(":6630", nil)
+	err := http.ListenAndServe(fmt.Sprintf("%s:%d", *address, *port), nil)
 	if err != nil {
 		fmt.Println("Failed to start server:", err)
 		os.Exit(1)

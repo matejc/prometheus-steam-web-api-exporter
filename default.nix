@@ -8,5 +8,5 @@ buildGoModule rec {
     outPath = ./.;
   };
 
-  vendorHash = "sha256-yGv3zPAO844DHpV7iGe4KGhLAbyfMqaC3gGJCVZm4U4=";
+  vendorHash = "sha256-wYq4cuKc7w8UoWG9OCuX2SotIcYJ/JHNQXnzl3cTyxM=";
 }

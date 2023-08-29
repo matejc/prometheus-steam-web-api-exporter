@@ -4,11 +4,11 @@ go 1.20
 
 require (
 	github.com/Jleagle/steam-go v0.0.0-20230725082712-1053b441b1f2
-	github.com/Jleagle/unmarshal-go v0.0.0-20210227002040-694f544f9265
 	github.com/prometheus/client_golang v1.16.0
 )
 
 require (
+	github.com/Jleagle/unmarshal-go v0.0.0-20210227002040-694f544f9265 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
