@@ -1,4 +1,5 @@
 # prometheus-steam-web-api-exporter
+
 A prometheus exporter to create metrics from the Steam Web API
 
 ## Requirements
@@ -12,14 +13,15 @@ You also need the Steam IDs for the users you want to scrape. Usually it's just 
 Just start the exporter with your API Key as an argument and the Steam IDs you want to get metrics for:
 
 ```
-./prometheus-steam-web-api-exporter --steam-api-key 123456 --steam-ids "123,456"
+export STEAM_API_KEY="123456"
+./prometheus-steam-web-api-exporter --steam-ids "123,456" --collectors "playtime,price,achievements"
 ```
 
 You can use environment variables:
 
 ```
-EXPORT STEAM_API_KEY="123456"
-EXPORT STEAM_IDS="123,456"
+export STEAM_API_KEY="123456"
+export STEAM_IDS="123,456"
 ./prometheus-steam-web-api-exporter
 ```
 
