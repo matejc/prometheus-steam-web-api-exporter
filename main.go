@@ -5,16 +5,29 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
+
+	"prometheus-steam-web-api-exporter/collectors"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"prometheus-steam-web-api-exporter/collectors"
 )
+
+func stringInSlice(a string, list []string) bool {
+    for _, b := range list {
+        if b == a {
+            return true
+        }
+    }
+    return false
+}
 
 func main() {
 	var (
-		steamAPIKey = flag.String("steam-api-key", "", "API key to use for requests to the Steam Web API.")
-		steamIDs    = flag.String("steam-ids", "", "Comma-separated list of SteamIDs whose playtime should be scraped.")
+		steamAPIKey     = flag.String("steam-api-key", "", "API key to use for requests to the Steam Web API.")
+		steamIDs        = flag.String("steam-ids", "", "Comma-separated list of SteamIDs whose playtime should be scraped.")
+		steamCollectors = flag.String("collectors", "playtime,price", "Comma-separated list of Steam collectors.")
+		steamCollectorsSlice []string
 	)
 	flag.Parse()
 
@@ -38,18 +51,37 @@ func main() {
 		os.Exit(1)
 	}
 
-	playtimeCollector := collectors.NewPlaytimeCollector(*steamAPIKey, *steamIDs)
-	priceCollector := collectors.NewPriceCollector(*steamAPIKey, *steamIDs)
+	if *steamCollectors == "" {
+		fmt.Println("Steam collectors are empty!")
+		os.Exit(1)
+	}
 
-	// Create a new Prometheus registry and register the collector
+	for _, steamCollector := range strings.Split(*steamCollectors, ",") {
+		steamCollectorsSlice = append(steamCollectorsSlice, strings.TrimSpace(steamCollector))
+	}
+
+	steamData := collectors.NewSteamData(*steamAPIKey, *steamIDs)
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(playtimeCollector)
-	registry.MustRegister(priceCollector)
+
+	if stringInSlice("playtime", steamCollectorsSlice) {
+		fmt.Println("Registering playtime collector ...")
+		playtimeCollector := collectors.NewPlaytimeCollector(steamData)
+		registry.MustRegister(playtimeCollector)
+	}
+	if stringInSlice("price", steamCollectorsSlice) {
+		fmt.Println("Registering price collector ...")
+		priceCollector := collectors.NewPriceCollector(steamData)
+		registry.MustRegister(priceCollector)
+	}
+	if stringInSlice("achievements", steamCollectorsSlice) {
+		fmt.Println("Registering achievements collector ...")
+		achievementsCollector := collectors.NewAchievementsCollector(steamData)
+		registry.MustRegister(achievementsCollector)
+	}
 
 	// Register the process and Go metrics.
-	registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-	registry.MustRegister(prometheus.NewGoCollector())
-
+	// registry.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+	// registry.MustRegister(prometheus.NewGoCollector())
 
 	http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 

@@ -2,11 +2,7 @@ package collectors
 
 import (
 	"fmt"
-	"os"
-	"strconv"
-	"strings"
 
-	"github.com/Jleagle/steam-go/steamapi"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -18,14 +14,12 @@ var (
 )
 
 type PlaytimeCollector struct {
-	SteamAPIKey string
-	SteamIDs    string
+	steamData SteamData
 }
 
-func NewPlaytimeCollector(steamAPIKey, steamIDs string) *PlaytimeCollector {
+func NewPlaytimeCollector(steamData SteamData) *PlaytimeCollector {
 	return &PlaytimeCollector{
-		SteamAPIKey: steamAPIKey,
-		SteamIDs:    steamIDs,
+		steamData: steamData,
 	}
 }
 
@@ -34,57 +28,24 @@ func (c *PlaytimeCollector) Describe(descs chan<- *prometheus.Desc) {
 }
 
 func (c *PlaytimeCollector) Collect(metrics chan<- prometheus.Metric) {
-	// Create a new client with your Steam API key
-	client := steamapi.NewClient()
-	client.SetKey(c.SteamAPIKey)
-
-	// Split the comma-separated SteamIDs into a slice
-	steamIDSlice := strings.Split(c.SteamIDs, ",")
-
-	for _, steamID := range steamIDSlice {
-		// Parse the SteamID string to an int64
-		steamIDInt, err := strconv.ParseInt(strings.TrimSpace(steamID), 10, 64)
-		if err != nil {
-			fmt.Printf("Error parsing SteamID %s: %s", steamID, err)
-			continue
-		}
-
+	for _, steamID := range c.steamData.steamIDs {
 		// Retrieve the user's profile summary
-		profile, err := client.GetPlayer(steamIDInt)
+		cache, err := c.steamData.get(steamID)
 		if err != nil {
-			fmt.Printf("Error retrieving player summary for SteamID %d: %s", steamIDInt, err)
-			continue
-		}
-
-		// Retrieve the list of owned games for the specified user
-		games, err := client.GetOwnedGames(steamIDInt)
-		if err != nil {
-			fmt.Printf("Error retrieving owned games for SteamID %d: %s", steamIDInt, err)
+			fmt.Printf("Error retrieving data for SteamID %d: %s\n", steamID, err)
 			continue
 		}
 
 		// Set the playtime for each game as a Prometheus gauge
-		for _, game := range games.Games {
-			gamesPlayed.With(prometheus.Labels{"steam_profile_name": profile.PersonaName, "steam_id": fmt.Sprintf("%d", steamIDInt), "name": game.Name, "app_id": fmt.Sprintf("%d", game.AppID)}).Set(float64(game.PlaytimeForever))
+		for _, game := range cache.games.Games {
+			gamesPlayed.With(prometheus.Labels{
+				"steam_profile_name": cache.profile.PersonaName,
+				"steam_id": fmt.Sprintf("%d", steamID),
+				"name": game.Name,
+				"app_id": fmt.Sprintf("%d", game.AppID),
+			}).Set(float64(game.PlaytimeForever))
 		}
 	}
 
 	gamesPlayed.Collect(metrics)
-}
-
-func RegisterPlaytimeCollector() {
-	steamAPIKey := os.Getenv("STEAM_API_KEY")
-	if steamAPIKey == "" {
-		fmt.Println("Steam Web API key not provided.")
-		os.Exit(1)
-	}
-
-	steamIDs := os.Getenv("STEAM_IDS")
-	if steamIDs == "" {
-		fmt.Println("SteamIDs not provided.")
-		os.Exit(1)
-	}
-
-	collector := NewPlaytimeCollector(steamAPIKey, steamIDs)
-	prometheus.MustRegister(collector)
 }
